@@ -69,6 +69,11 @@ public class LoginFrame extends JFrame {
                 String username = usernameField.getText();
                 String password = new String(passwordField.getPassword());
 
+                if(username.isEmpty() || password.isEmpty()) {
+                    JOptionPane.showMessageDialog(LoginFrame.this, "Please fill in all fields.");
+                    return;
+                }
+
                 User user = Auth.login(username, password);
                 if (user != null) {
                     // Session memory + persistence
