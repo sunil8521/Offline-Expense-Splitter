@@ -449,30 +449,39 @@ public class ExpenseTracker extends JFrame {
     }
 
     private List<String> searchUsers(String usernameQuery) {
-    List<String> matches = new ArrayList<>();
-    String sql = 
-      " SELECT username " +
-      "FROM users " +
-      "WHERE username LIKE ? " +
-      "  AND username <> ?";
-    try (PreparedStatement ps = 
-            MySQLConnection.connection.prepareStatement(sql)) {
-        ps.setString(1, "%" + usernameQuery + "%");
-        ps.setString(2, Session.currentUsername);
-        try (ResultSet rs = ps.executeQuery()) {
-            while (rs.next()) {
-                matches.add(rs.getString("username"));
+        List<String> matches = new ArrayList<>();
+        String sql =
+          "SELECT u.username " +
+          "FROM users u " +
+          "WHERE u.username LIKE ? " +
+          "  AND u.username <> ? " +
+          "  AND NOT EXISTS ( " +
+          "      SELECT 1 FROM friendships f " +
+          "      WHERE (f.user1 = ? AND f.user2 = u.username) " +
+          "         OR (f.user1 = u.username AND f.user2 = ?) " +
+          "  )";
+        try (PreparedStatement ps = MySQLConnection.connection.prepareStatement(sql)) {
+            ps.setString(1, "%" + usernameQuery + "%");
+            ps.setString(2, Session.currentUsername);
+            ps.setString(3, Session.currentUsername);
+            ps.setString(4, Session.currentUsername);
+    
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    matches.add(rs.getString("username"));
+                }
             }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+                "Error searching users: " + ex.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE);
         }
-    } catch (SQLException ex) {
-        ex.printStackTrace();
-        JOptionPane.showMessageDialog(this,
-            "Error searching users: " + ex.getMessage(),
-            "Database Error",
-            JOptionPane.ERROR_MESSAGE);
+        return matches;
     }
-    return matches;
-}
+    
+
 
 private void sendFriendRequest(String toUsername) {
     String sql = 
@@ -527,6 +536,8 @@ private void showFriendRequestsDialog() {
 
     dialog.setVisible(true);
 }
+
+
 
 private void refreshFriendRequests(JPanel resultsPanel) {
 
