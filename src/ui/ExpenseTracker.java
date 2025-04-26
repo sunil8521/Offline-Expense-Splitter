@@ -3,21 +3,22 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import javax.swing.table.DefaultTableModel;
 import auth.Session;
+import auth.SessionManager;
 import db.MySQLConnection;
 
 import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.NumberFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
+import java.sql.Timestamp;
+
 
 public class ExpenseTracker extends JFrame {
     // Main panels using CardLayout
@@ -90,8 +91,21 @@ public class ExpenseTracker extends JFrame {
         borrowButton = createSidebarButton("Borrow", "borrow");
         debtButton = createSidebarButton("Debt", "debt");
         profileButton = createSidebarButton("Profile", "profile");
-        logoutButton = createSidebarButton("Logout", null);
-        
+        logoutButton  = new JButton("Logout");
+        logoutButton.setAlignmentX(Component.CENTER_ALIGNMENT);
+        logoutButton.setMaximumSize(new Dimension(160, 40));
+        logoutButton.setFocusPainted(false);
+        logoutButton.setBackground(new Color(240, 240, 240));
+        logoutButton.setBorderPainted(false);
+        logoutButton.setFont(new Font("Sans-serif", Font.PLAIN, 14));
+        logoutButton.addActionListener(e -> {
+            Session.currentUsername = null;
+            SessionManager.clearSession();
+
+            this.dispose();
+            // 3) Show the login screen
+            new ui.LoginFrame().setVisible(true);
+        });        
         // Add components to sidebar
         sidebar.add(titleLabel);
         sidebar.add(Box.createRigidArea(new Dimension(0, 20)));
@@ -147,7 +161,7 @@ public class ExpenseTracker extends JFrame {
         headerPanel.add(titleLabel, BorderLayout.WEST);
     
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton showFriendButton   = new JButton("Show Friends");
+        JButton showFriendButton   = new JButton("Friend Requests");
         JButton addFriendButton = new JButton("Add Friend");
         JButton addBorrowButton = new JButton("Add Borrow");
         JButton addDebtButton   = new JButton("Add Debt");
@@ -179,12 +193,64 @@ public class ExpenseTracker extends JFrame {
         northPanel.add(headerPanel);
         northPanel.add(summaryContainer);
     
-        // 4) Add combined north panel and return
         panel.add(northPanel, BorderLayout.NORTH);
-    
+        JPanel historyContainer = new JPanel(new BorderLayout());
+        historyContainer.setBorder(BorderFactory.createTitledBorder("Request History"));
+        historyContainer.setPreferredSize(new Dimension(0, 150));  // adjust height
+        
+        JPanel historyList = new JPanel();
+        historyList.setLayout(new BoxLayout(historyList, BoxLayout.Y_AXIS));
+        JScrollPane historyScroll = new JScrollPane(historyList);
+        historyScroll.setBorder(new EmptyBorder(10, 10, 10, 10));
+        
+        historyContainer.add(historyScroll, BorderLayout.CENTER);
+        panel.add(historyContainer, BorderLayout.SOUTH);
+
+        refreshRequestHistory(historyList);
+
         return panel;
     }
     
+    private void refreshRequestHistory(JPanel historyList) {
+        historyList.removeAll();
+    System.out.println("do");
+        String sql = """
+          SELECT receiver_username, status, requested_at
+            FROM friend_requests
+           WHERE sender_username = ?
+             AND status <> 'pending'
+           ORDER BY requested_at DESC
+        """;
+    
+        try (PreparedStatement ps = MySQLConnection.connection.prepareStatement(sql)) {
+            ps.setString(1, Session.currentUsername);
+            try (ResultSet rs = ps.executeQuery()) {
+                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+                while (rs.next()) {
+                    String receiver = rs.getString("receiver_username");
+                    String status   = rs.getString("status");
+                    Timestamp ts = rs.getTimestamp("requested_at");
+    
+                    String line = receiver
+                                + " — " + status.toUpperCase()
+                                + " (" + ts.toLocalDateTime().format(fmt) + ")";
+    
+                    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+                    row.add(new JLabel(line));
+                    historyList.add(row);
+                }
+            }
+        } catch (SQLException ex) {
+            JOptionPane.showMessageDialog(this,
+                "Error loading history: " + ex.getMessage(),
+                "Database Error",
+                JOptionPane.ERROR_MESSAGE);
+        }
+    
+        historyList.revalidate();
+        historyList.repaint();
+    }
+
     private JPanel createSummaryCard(String title, double amount) {
         JPanel card = new JPanel(new BorderLayout());
         card.setBorder(BorderFactory.createCompoundBorder(
@@ -669,130 +735,164 @@ private void rejectFriendRequest(String sender) {
     }
 }
 
-    private void showAddTransactionDialog(boolean isBorrow) {
-        JDialog dialog = new JDialog(this, isBorrow ? "Add Borrowed Money" : "Add Debt", true);
-        dialog.setSize(400, 350);
-        dialog.setLocationRelativeTo(this);
-        dialog.setLayout(new BorderLayout());
-        
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(5, 5, 5, 5);
-        
-        // Friend dropdown
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        JLabel friendLabel = new JLabel("Friend");
-        formPanel.add(friendLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        gbc.weightx = 1.0;
-        JComboBox<String> friendComboBox = new JComboBox<>();
-        for (Friend friend : friends) {
-            friendComboBox.addItem(friend.getName());
+private void showAddTransactionDialog(boolean isBorrow) {
+    JDialog dialog = new JDialog(this, isBorrow ? "Add Borrowed Money" : "Add Debt", true);
+    dialog.setSize(400, 350);
+    dialog.setLocationRelativeTo(this);
+    dialog.setLayout(new BorderLayout());
+
+    // --- Form panel ---
+    JPanel formPanel = new JPanel(new GridBagLayout());
+    formPanel.setBorder(new EmptyBorder(20, 20, 20, 20));
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+    gbc.insets = new Insets(5,5,5,5);
+
+    // 1) Friend dropdown (now from DB)
+    gbc.gridx = 0; gbc.gridy = 0;
+    formPanel.add(new JLabel("Friend"), gbc);
+
+    gbc.gridy = 1; gbc.weightx = 1.0;
+    JComboBox<String> friendComboBox = new JComboBox<>();
+    List<String> friendNames = getFriendsList();
+    if (friendNames.isEmpty()) {
+        friendComboBox.addItem("<no friends>");
+        friendComboBox.setEnabled(false);
+    } else {
+        for (String f : friendNames) {
+            friendComboBox.addItem(f);
         }
-        formPanel.add(friendComboBox, gbc);
-        
-        // Amount field
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        gbc.weightx = 0;
-        JLabel amountLabel = new JLabel("Amount");
-        formPanel.add(amountLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 3;
-        gbc.weightx = 1.0;
-        JTextField amountField = new JTextField(20);
-        formPanel.add(amountField, gbc);
-        
-        // Reason field
-        gbc.gridx = 0;
-        gbc.gridy = 4;
-        gbc.weightx = 0;
-        JLabel reasonLabel = new JLabel("Reason");
-        formPanel.add(reasonLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 5;
-        gbc.weightx = 1.0;
-        JTextField reasonField = new JTextField(20);
-        formPanel.add(reasonField, gbc);
-        
-        // Date field
-        gbc.gridx = 0;
-        gbc.gridy = 6;
-        gbc.weightx = 0;
-        JLabel dateLabel = new JLabel("Date");
-        formPanel.add(dateLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 7;
-        gbc.weightx = 1.0;
-        JTextField dateField = new JTextField(LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE));
-        formPanel.add(dateField, gbc);
-        
-        dialog.add(formPanel, BorderLayout.CENTER);
-        
-        // Buttons
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton cancelButton = new JButton("Cancel");
-        JButton saveButton = new JButton("Save");
-        
-        cancelButton.addActionListener(e -> dialog.dispose());
-        saveButton.addActionListener(e -> {
-            try {
-                String friendName = (String) friendComboBox.getSelectedItem();
-                double amount = Double.parseDouble(amountField.getText().trim());
-                String reason = reasonField.getText().trim();
-                String date = dateField.getText().trim();
-                
-                if (friendName != null && amount > 0 && !reason.isEmpty() && !date.isEmpty()) {
-                    // Create new transaction
-                    Transaction transaction = new Transaction(friendName, reason, amount, date);
-                    
-                    // Add to appropriate list
-                    if (isBorrow) {
-                        borrowTransactions.add(transaction);
-                    } else {
-                        debtTransactions.add(transaction);
-                    }
-                    
-                    // Update friend's borrow/debt amount
-                    for (Friend friend : friends) {
-                        if (friend.getName().equals(friendName)) {
-                            if (isBorrow) {
-                                friend.setBorrowAmount(friend.getBorrowAmount() + amount);
-                            } else {
-                                friend.setDebtAmount(friend.getDebtAmount() + amount);
-                            }
-                            break;
-                        }
-                    }
-                    
-                    // Refresh UI
-                    // refreshUI(isBorrow ? "borrow" : "debt");
-                    refreshUI("home");
-                    
-                    dialog.dispose();
-                } else {
-                    JOptionPane.showMessageDialog(dialog, "Please fill all fields correctly", "Error", JOptionPane.ERROR_MESSAGE);
-                }
-            } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(dialog, "Please enter a valid amount", "Error", JOptionPane.ERROR_MESSAGE);
-            }
-        });
-        
-        buttonPanel.add(cancelButton);
-        buttonPanel.add(saveButton);
-        dialog.add(buttonPanel, BorderLayout.SOUTH);
-        
-        dialog.setVisible(true);
     }
+    formPanel.add(friendComboBox, gbc);
+
+    // 2) Amount
+    gbc.gridy = 2; gbc.weightx = 0;
+    formPanel.add(new JLabel("Amount"), gbc);
+    gbc.gridy = 3; gbc.weightx = 1.0;
+    JTextField amountField = new JTextField(20);
+    formPanel.add(amountField, gbc);
+
+    // 3) Reason
+    gbc.gridy = 4; gbc.weightx = 0;
+    formPanel.add(new JLabel("Reason"), gbc);
+    gbc.gridy = 5; gbc.weightx = 1.0;
+    JTextField reasonField = new JTextField(20);
+    formPanel.add(reasonField, gbc);
+
+    // 4) Date
+    gbc.gridy = 6; gbc.weightx = 0;
+    formPanel.add(new JLabel("Date"), gbc);
+    gbc.gridy = 7; gbc.weightx = 1.0;
+    JTextField dateField = new JTextField(
+        LocalDate.now().format(DateTimeFormatter.ISO_LOCAL_DATE)
+    );
+    formPanel.add(dateField, gbc);
+
+    dialog.add(formPanel, BorderLayout.CENTER);
+
+    // --- Buttons ---
+    JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+    JButton cancelButton = new JButton("Cancel");
+    JButton saveButton   = new JButton("Save");
+    cancelButton.addActionListener(e -> dialog.dispose());
+    saveButton.addActionListener(e -> {
+        if (friendNames.isEmpty()) {
+            JOptionPane.showMessageDialog(dialog,
+                "You have no friends to transact with.",
+                "No Friends", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        try {
+            String friendName = (String) friendComboBox.getSelectedItem();
+            double amount     = Double.parseDouble(amountField.getText().trim());
+            String reason     = reasonField.getText().trim();
+            String date       = dateField.getText().trim();
+
+            if (amount > 0 && !reason.isEmpty() && !date.isEmpty()) {
+                // Persist to DB
+                saveTransaction(isBorrow, friendName, amount, reason, date);
+                // Refresh UI
+                refreshUI("home");
+                dialog.dispose();
+            } else {
+                JOptionPane.showMessageDialog(dialog,
+                    "Please fill all fields correctly",
+                    "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        } catch (NumberFormatException ex) {
+            JOptionPane.showMessageDialog(dialog,
+                "Please enter a valid amount",
+                "Error", JOptionPane.ERROR_MESSAGE);
+        }
+    });
+    buttonPanel.add(cancelButton);
+    buttonPanel.add(saveButton);
+    dialog.add(buttonPanel, BorderLayout.SOUTH);
+
+    dialog.setVisible(true);
+}
+
+private List<String> getFriendsList() {
+    List<String> list = new ArrayList<>();
+    String sql =
+      "SELECT CASE WHEN user1 = ? THEN user2 ELSE user1 END AS friend " +
+      "FROM friendships " +
+      "WHERE user1 = ? OR user2 = ?";
+    try (PreparedStatement ps = 
+           MySQLConnection.connection.prepareStatement(sql)) {
+        ps.setString(1, Session.currentUsername);
+        ps.setString(2, Session.currentUsername);
+        ps.setString(3, Session.currentUsername);
+        try (ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) {
+                list.add(rs.getString("friend"));
+            }
+        }
+    } catch (SQLException ex) {
+        ex.printStackTrace();
+        JOptionPane.showMessageDialog(this,
+            "Error fetching friends list: " + ex.getMessage(),
+            "Database Error", JOptionPane.ERROR_MESSAGE);
+    }
+    return list;
+}
+
+private void saveTransaction(boolean isBorrow,
+                             String friendUsername,
+                             double amount,
+                             String reason,
+                             String date) {
+    String sql =
+      "INSERT INTO transactions " +
+      "(lender_username, borrower_username, amount, reason, transaction_date) " +
+      "VALUES (?, ?, ?, ?, ?)";
+    try (PreparedStatement ps = 
+           MySQLConnection.connection.prepareStatement(sql)) {
+        String you = Session.currentUsername;
+        if (isBorrow) {
+            // you borrowed => friend lent to you
+            ps.setString(1, friendUsername); // lender
+            ps.setString(2, you);            // borrower
+        } else {
+            // you lend => you lender, friend borrower
+            ps.setString(1, you);
+            ps.setString(2, friendUsername);
+        }
+        ps.setDouble(3, amount);
+        ps.setString(4, reason);
+        ps.setDate(5, Date.valueOf(date));
+        ps.executeUpdate();
+        JOptionPane.showMessageDialog(this,
+            "Transaction saved.",
+            "Success", JOptionPane.INFORMATION_MESSAGE);
+    } catch (SQLException ex) {
+        ex.printStackTrace();
+        JOptionPane.showMessageDialog(this,
+            "Failed to save transaction: " + ex.getMessage(),
+            "Database Error", JOptionPane.ERROR_MESSAGE);
+    }
+}
+
 
     private void refreshUI(String panelToShow) {
         // 1) Wipe out everything

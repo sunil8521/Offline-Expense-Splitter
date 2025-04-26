@@ -9,7 +9,6 @@ import Models.User;
 import auth.Auth;
 import auth.Session;
 import auth.SessionManager;
-import ui.HomePage;
 
 public class LoginFrame extends JFrame {
     private JTextField usernameField;
@@ -82,7 +81,9 @@ public class LoginFrame extends JFrame {
 
                     JOptionPane.showMessageDialog(LoginFrame.this, "Login successful!");
                     dispose();
-                    new HomePage().setVisible(true);  // Assuming HomeFrame exists
+                    // new HomePage().setVisible(true);  
+                    new ExpenseTracker().setVisible(true);
+
                 } else {
                     JOptionPane.showMessageDialog(LoginFrame.this, "Invalid credentials.");
                 }
