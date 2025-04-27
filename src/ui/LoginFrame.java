@@ -7,8 +7,8 @@ import java.awt.event.ActionListener;
 
 import Models.User;
 import auth.Auth;
-import auth.Session;
-import auth.SessionManager;
+import utils.Session;
+import utils.SessionManager;
 
 public class LoginFrame extends JFrame {
     private JTextField usernameField;

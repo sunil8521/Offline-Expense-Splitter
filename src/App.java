@@ -1,10 +1,11 @@
 
 import ui.SignUpFrame;
+import utils.Session;
+import utils.SessionManager;
+
 import javax.swing.UIManager;
 import com.formdev.flatlaf.FlatLightLaf;
 import db.MySQLConnection;
-import auth.Session;
-import auth.SessionManager;
 import ui.HomePage;
 import ui.DashboardUI;
 import ui.ExpenseTracker;

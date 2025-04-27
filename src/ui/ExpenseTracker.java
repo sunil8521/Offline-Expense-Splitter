@@ -1,11 +1,15 @@
 package ui;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
+
+
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
-import auth.Session;
-import auth.SessionManager;
+
+import controller.TransactionController;
 import db.MySQLConnection;
+import utils.Session;
+import utils.SessionManager;
 
 import java.awt.*;
 import java.sql.PreparedStatement;
@@ -17,7 +21,12 @@ import java.time.format.DateTimeFormatter;
 import java.sql.Date;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.sql.Timestamp;
+
+
+
+
 
 
 public class ExpenseTracker extends JFrame {
@@ -31,14 +40,10 @@ public class ExpenseTracker extends JFrame {
     private JButton debtButton;
     private JButton profileButton;
     private JButton logoutButton;
-    
-    // Data models
-    private List<Transaction> borrowTransactions = new ArrayList<>();
-    private List<Transaction> debtTransactions = new ArrayList<>();
-    private List<Friend> friends = new ArrayList<>();
+
     
     // Currency formatter
-    private NumberFormat currencyFormat = NumberFormat.getCurrencyInstance();
+    private NumberFormat currencyFormat = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("en-IN"));
 
     public ExpenseTracker() {
         // Set up the frame
@@ -48,7 +53,7 @@ public class ExpenseTracker extends JFrame {
         setLocationRelativeTo(null);
         
         // Initialize sample data
-        initializeSampleData();
+        // initializeSampleData();
         
         // Set up the main layout
         setLayout(new BorderLayout());
@@ -64,7 +69,7 @@ public class ExpenseTracker extends JFrame {
         // Create panels for each section
         contentPanel.add(createHomePanel(), "home");
         contentPanel.add(createBorrowPanel(), "borrow");
-        contentPanel.add(createDebtPanel(), "debt");
+        contentPanel.add(createLendPanel(), "lend");
         contentPanel.add(createProfilePanel(), "profile");
         
         add(contentPanel, BorderLayout.CENTER);
@@ -89,7 +94,7 @@ public class ExpenseTracker extends JFrame {
         // Create sidebar buttons with icons
         homeButton = createSidebarButton("Home", "home");
         borrowButton = createSidebarButton("Borrow", "borrow");
-        debtButton = createSidebarButton("Debt", "debt");
+        debtButton = createSidebarButton("Lend", "lend");
         profileButton = createSidebarButton("Profile", "profile");
         logoutButton  = new JButton("Logout");
         logoutButton.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -163,25 +168,25 @@ public class ExpenseTracker extends JFrame {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton showFriendButton   = new JButton("Friend Requests");
         JButton addFriendButton = new JButton("Add Friend");
-        JButton addBorrowButton = new JButton("Add Borrow");
-        JButton addDebtButton   = new JButton("Add Debt");
+        // JButton addBorrowButton = new JButton("Borrow");
+        JButton addDebtButton   = new JButton("Lend");
         addFriendButton.addActionListener(e -> showAddFriendDialog());
-        addBorrowButton.addActionListener(e -> showAddTransactionDialog(true));
+        // addBorrowButton.addActionListener(e -> showAddTransactionDialog(true));
         addDebtButton.addActionListener(e -> showAddTransactionDialog(false));
         showFriendButton.addActionListener(e -> showFriendRequestsDialog());
         buttonPanel.add(showFriendButton);
         buttonPanel.add(addFriendButton);
-        buttonPanel.add(addBorrowButton);
+        // buttonPanel.add(addBorrowButton);
         buttonPanel.add(addDebtButton);
         headerPanel.add(buttonPanel, BorderLayout.EAST);
     
         // 2) Build summary
-        double totalBorrow = borrowTransactions.stream().mapToDouble(Transaction::getAmount).sum();
-        double totalDebt   = debtTransactions.stream().mapToDouble(Transaction::getAmount).sum();
+        double totalBorrow = TransactionController.getTotalBorrowed();
+        double totalLend   = TransactionController.getTotalLent();
     
         JPanel summaryPanel = new JPanel(new GridLayout(1, 2, 10, 0));
         summaryPanel.add(createSummaryCard("Total Borrowed", totalBorrow));
-        summaryPanel.add(createSummaryCard("Total Debt",     totalDebt));
+        summaryPanel.add(createSummaryCard("Total lent",     totalLend));
     
         JPanel summaryContainer = new JPanel(new BorderLayout());
         summaryContainer.setBorder(new EmptyBorder(10, 0, 10, 0));
@@ -276,73 +281,138 @@ public class ExpenseTracker extends JFrame {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(20, 20, 20, 20));
         
-        // Header with title and button
+        // Header
         JPanel headerPanel = new JPanel(new BorderLayout());
         JLabel titleLabel = new JLabel("Borrowed Money");
         titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 20));
         headerPanel.add(titleLabel, BorderLayout.WEST);
-        
-        // JButton addButton = new JButton("Add Borrow");
-        // addButton.addActionListener(e -> showAddTransactionDialog(true));
-        // headerPanel.add(addButton, BorderLayout.EAST);
-        
         panel.add(headerPanel, BorderLayout.NORTH);
+        
+        // Fetch real borrow transactions (where current user is borrower)
+        List<Transaction> borrowList = fetchTransactions(true); 
         
         // Transactions list
         JPanel transactionsPanel = new JPanel();
         transactionsPanel.setLayout(new BoxLayout(transactionsPanel, BoxLayout.Y_AXIS));
+        for (Transaction txn : borrowList) {
+            JPanel card = createTransactionCard(txn);
+            String borrower = Session.currentUsername;
+            String lender   = txn.getFriendName();
+            boolean pending = TransactionController
+                                .hasPendingClearRequest(txn.getId(), borrower, lender);
         
-        for (Transaction transaction : borrowTransactions) {
-            JPanel transactionCard = createTransactionCard(transaction);
-            transactionsPanel.add(transactionCard);
-            transactionsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+            JButton clearBtn = new JButton(pending ? "Requested" : "Request Clear");
+            clearBtn.setEnabled(!pending);
+
+            clearBtn.addActionListener(evt -> {
+             
+                TransactionController.sendClearRequest(txn.getId(),Session.currentUsername,txn.getFriendName());
+                // disable so you can’t spam it
+                clearBtn.setEnabled(false);
+                clearBtn.setText("Requested");
+            });
+
+
+
+
+
+
+
+
+
+
+
+
+
+            // wrap the button in its own panel so it lays out nicely
+            JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+            btnPanel.add(clearBtn);
+            card.add(btnPanel, BorderLayout.SOUTH);
+
+            transactionsPanel.add(card);
+            transactionsPanel.add(Box.createRigidArea(new Dimension(0, 30)));
         }
         
         JScrollPane scrollPane = new JScrollPane(transactionsPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        
         panel.add(scrollPane, BorderLayout.CENTER);
         
         return panel;
     }
-   
        
-    private JPanel createDebtPanel() {
+    private JPanel createLendPanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        
-        // Header with title and button
+    
+        // Header
         JPanel headerPanel = new JPanel(new BorderLayout());
-        JLabel titleLabel = new JLabel("Debt Money");
+        JLabel titleLabel = new JLabel("Lend Money");
         titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 20));
         headerPanel.add(titleLabel, BorderLayout.WEST);
-        
-        // JButton addButton = new JButton("Add Debt");
-        // addButton.addActionListener(e -> showAddTransactionDialog(false));
-        // headerPanel.add(addButton, BorderLayout.EAST);
-        
         panel.add(headerPanel, BorderLayout.NORTH);
-        
+    
+        // Fetch real “lend” transactions (where current user is lender)
+        List<Transaction> lendList = fetchTransactions(false);
+    
         // Transactions list
         JPanel transactionsPanel = new JPanel();
         transactionsPanel.setLayout(new BoxLayout(transactionsPanel, BoxLayout.Y_AXIS));
-        
-        for (Transaction transaction : debtTransactions) {
-            JPanel transactionCard = createTransactionCard(transaction);
+        for (Transaction txn : lendList) {
+            JPanel transactionCard = createTransactionCard(txn);
             transactionsPanel.add(transactionCard);
             transactionsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         }
-        
+    
         JScrollPane scrollPane = new JScrollPane(transactionsPanel);
         scrollPane.setBorder(BorderFactory.createEmptyBorder());
         scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        
         panel.add(scrollPane, BorderLayout.CENTER);
-        
+    
         return panel;
     }
     
+    private List<Transaction> fetchTransactions(boolean isBorrow) {
+        List<Transaction> list = new ArrayList<>();
+        String sql = """
+          SELECT 
+            id,lender_username, borrower_username, amount, reason, transaction_date
+          FROM transactions
+          WHERE """ + (isBorrow
+            ? " borrower_username = ? "
+            : " lender_username   = ? ") + 
+          "ORDER BY transaction_date DESC";
+        
+        try (PreparedStatement ps = 
+               MySQLConnection.connection.prepareStatement(sql)) {
+            ps.setString(1, Session.currentUsername);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    // friendName is the other party
+                    int txnId = rs.getInt("id");
+                    String friendName = isBorrow
+                        ? rs.getString("lender_username")
+                        : rs.getString("borrower_username");
+                    String reason = rs.getString("reason");
+                    double amount = rs.getDouble("amount");
+
+                    String date   = rs.getDate("transaction_date").toString();
+                    
+                    list.add(new Transaction(friendName, reason, amount, date, txnId));
+                }
+            }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+              "Error loading transactions: " + ex.getMessage(),
+              "Database Error", JOptionPane.ERROR_MESSAGE);
+        }
+        return list;
+    }
+
+
+
+
     private JPanel createProfilePanel() {
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(20, 20, 20, 20));
@@ -422,7 +492,7 @@ public class ExpenseTracker extends JFrame {
             BorderFactory.createLineBorder(new Color(220, 220, 220), 1, true),
             BorderFactory.createEmptyBorder(15, 15, 15, 15)
         ));
-        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
+        card.setMaximumSize(new Dimension(Integer.MAX_VALUE, 130));
         
         JPanel headerPanel = new JPanel(new BorderLayout());
         JLabel nameLabel = new JLabel(transaction.getFriendName());
@@ -736,7 +806,7 @@ private void rejectFriendRequest(String sender) {
 }
 
 private void showAddTransactionDialog(boolean isBorrow) {
-    JDialog dialog = new JDialog(this, isBorrow ? "Add Borrowed Money" : "Add Debt", true);
+    JDialog dialog = new JDialog(this, isBorrow ? "Borrowed Money" : "Lend Money", true);
     dialog.setSize(400, 350);
     dialog.setLocationRelativeTo(this);
     dialog.setLayout(new BorderLayout());
@@ -895,13 +965,13 @@ private void saveTransaction(boolean isBorrow,
 
 
     private void refreshUI(String panelToShow) {
-        // 1) Wipe out everything
+        // 1) Wipe out everything`
         contentPanel.removeAll();
     
         // 2) Re-add each card
         contentPanel.add(createHomePanel(),   "home");
         contentPanel.add(createBorrowPanel(), "borrow");
-        contentPanel.add(createDebtPanel(),   "debt");
+        contentPanel.add(createLendPanel(),   "lend");
         contentPanel.add(createProfilePanel(),"profile");
     
         // 3) Tell Swing to re-layout and repaint
@@ -913,51 +983,25 @@ private void saveTransaction(boolean isBorrow,
     }
     
 
-    static class Friend {
-        private String name;
-        private double borrowAmount;
-        private double debtAmount;
-        
-        public Friend(String name, double borrowAmount, double debtAmount) {
-            this.name = name;
-            this.borrowAmount = borrowAmount;
-            this.debtAmount = debtAmount;
-        }
-        
-        public String getName() {
-            return name;
-        }
-        
-        public double getBorrowAmount() {
-            return borrowAmount;
-        }
-        
-        public void setBorrowAmount(double borrowAmount) {
-            this.borrowAmount = borrowAmount;
-        }
-        
-        public double getDebtAmount() {
-            return debtAmount;
-        }
-        
-        public void setDebtAmount(double debtAmount) {
-            this.debtAmount = debtAmount;
-        }
-    }
 
     static class Transaction {
+        private int id;
         private String friendName;
         private String reason;
         private double amount;
         private String date;
         
-        public Transaction(String friendName, String reason, double amount, String date) {
+        public Transaction( String friendName, String reason, double amount, String date,int id) {
+            this.id = id;
             this.friendName = friendName;
             this.reason = reason;
             this.amount = amount;
             this.date = date;
         }
         
+        public int getId() {
+            return id;
+        }
         public String getFriendName() {
             return friendName;
         }
@@ -973,25 +1017,8 @@ private void saveTransaction(boolean isBorrow,
         public String getDate() {
             return date;
         }
+
     }
-
-
-    private void initializeSampleData() {
-        // Sample friends
-        friends.add(new Friend("Alex Johnson", 50, 0));
-        friends.add(new Friend("Sam Wilson", 0, 75));
-        friends.add(new Friend("Taylor Swift", 120, 30));
-        
-        // Sample borrow transactions
-        borrowTransactions.add(new Transaction("Alex Johnson", "Lunch at restaurant", 50, "2023-04-15"));
-        borrowTransactions.add(new Transaction("Taylor Swift", "Movie tickets", 30, "2023-04-10"));
-        borrowTransactions.add(new Transaction("Taylor Swift", "Grocery shopping", 90, "2023-04-05"));
-        
-        // Sample debt transactions
-        debtTransactions.add(new Transaction("Sam Wilson", "Dinner at restaurant", 75, "2023-04-18"));
-        debtTransactions.add(new Transaction("Taylor Swift", "Concert tickets", 30, "2023-04-12"));
-    }
-
 
 
 }

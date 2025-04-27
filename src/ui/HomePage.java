@@ -1,9 +1,9 @@
 package ui;
 
-import auth.Session;
 import javax.swing.*;
 import java.awt.*;
 import ui.LoginFrame;
+import utils.Session;
 
 public class HomePage extends JFrame {
     public HomePage() {
