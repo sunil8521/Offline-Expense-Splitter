@@ -1,102 +1,107 @@
 package ui;
 
-import javax.swing.*;
-import java.awt.*;
-import java.awt.event.ActionEvent;
-import java.awt.event.ActionListener;
-
 import Models.User;
 import auth.Auth;
 import utils.Session;
 import utils.SessionManager;
 
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+
 public class LoginFrame extends JFrame {
-    private JTextField usernameField;
-    private JPasswordField passwordField;
-    private JButton loginButton, signUpButton;
+    private final JTextField usernameField;
+    private final JPasswordField passwordField;
+    private final JButton loginButton;
+    private final JButton signUpButton;
 
     public LoginFrame() {
-        setTitle("Login");
-        setSize(400, 320);
+        super("Login");
+        setSize(900, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         setResizable(false);
 
-        // Main panel
-        JPanel panel = new JPanel();
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-        panel.setBorder(BorderFactory.createEmptyBorder(30, 40, 30, 40));
+        // Main content panel with padding
+        JPanel content = new JPanel(new GridBagLayout());
+        content.setBorder(new EmptyBorder(40, 60, 40, 60));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(12, 12, 12, 12);
+        gbc.fill   = GridBagConstraints.HORIZONTAL;
+        gbc.anchor = GridBagConstraints.CENTER;
 
-        JLabel titleLabel = new JLabel("Welcome Back!");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
-        titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
-        titleLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 20, 0));
+        // Title
+        JLabel titleLabel = new JLabel("Welcome Back!", SwingConstants.CENTER);
+        titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 28));
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        content.add(titleLabel, gbc);
 
-        JLabel usernameLabel = new JLabel("Username:");
+        // Username label + field
+        gbc.gridy++;
+        gbc.gridwidth = 1;
+        gbc.gridx = 0;
+        content.add(new JLabel("Username:"), gbc);
+
         usernameField = new JTextField(20);
-        usernameField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        gbc.gridx = 1;
+        content.add(usernameField, gbc);
 
-        JLabel passwordLabel = new JLabel("Password:");
+        // Password label + field
+        gbc.gridy++;
+        gbc.gridx = 0;
+        content.add(new JLabel("Password:"), gbc);
+
         passwordField = new JPasswordField(20);
-        passwordField.setMaximumSize(new Dimension(Integer.MAX_VALUE, 30));
+        gbc.gridx = 1;
+        content.add(passwordField, gbc);
 
+        // Login button
         loginButton = new JButton("Login");
-        loginButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        loginButton.setPreferredSize(new Dimension(100, 30));
+        loginButton.setPreferredSize(new Dimension(140, 40));
+        gbc.gridy++;
+        gbc.gridx = 0;
+        gbc.gridwidth = 2;
+        content.add(loginButton, gbc);
 
+        // Sign Up button
         signUpButton = new JButton("Sign Up");
-        signUpButton.setAlignmentX(Component.CENTER_ALIGNMENT);
-        signUpButton.setPreferredSize(new Dimension(100, 30));
+        signUpButton.setPreferredSize(new Dimension(140, 40));
+        gbc.gridy++;
+        content.add(signUpButton, gbc);
 
-        panel.add(titleLabel);
-        panel.add(usernameLabel);
-        panel.add(usernameField);
-        panel.add(Box.createRigidArea(new Dimension(0, 10)));
-        panel.add(passwordLabel);
-        panel.add(passwordField);
-        panel.add(Box.createRigidArea(new Dimension(0, 20)));
-        panel.add(loginButton);
-        panel.add(Box.createRigidArea(new Dimension(0, 10)));
-        panel.add(signUpButton);
+        setContentPane(content);
 
-        add(panel);
-
-        // Login button logic
-        loginButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                String username = usernameField.getText();
-                String password = new String(passwordField.getPassword());
-
-                if(username.isEmpty() || password.isEmpty()) {
-                    JOptionPane.showMessageDialog(LoginFrame.this, "Please fill in all fields.");
-                    return;
-                }
-
-                User user = Auth.login(username, password);
-                if (user != null) {
-                    // Session memory + persistence
-                    Session.currentUsername = user.getUsername();
-                    SessionManager.saveSession(user.getUsername());
-
-                    JOptionPane.showMessageDialog(LoginFrame.this, "Login successful!");
-                    dispose();
-                    // new HomePage().setVisible(true);  
-                    new ExpenseTracker().setVisible(true);
-
-                } else {
-                    JOptionPane.showMessageDialog(LoginFrame.this, "Invalid credentials.");
-                }
+        // Action listeners (logic unchanged)
+        loginButton.addActionListener((ActionEvent e) -> {
+            String username = usernameField.getText().trim();
+            String password = new String(passwordField.getPassword());
+            if (username.isEmpty() || password.isEmpty()) {
+                JOptionPane.showMessageDialog(
+                    this, "Please fill in all fields.", "Missing Data", JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+            User user = Auth.login(username, password);
+            if (user != null) {
+                Session.currentUsername = user.getUsername();
+                Session.currentUserFullName = user.getFullName();
+                SessionManager.saveSession(user.getUsername());
+                JOptionPane.showMessageDialog(this, "Login successful!",
+                    "Welcome", JOptionPane.INFORMATION_MESSAGE);
+                dispose();
+                new ExpenseTracker().setVisible(true);
+            } else {
+                JOptionPane.showMessageDialog(this, "Invalid credentials.",
+                    "Login Failed", JOptionPane.ERROR_MESSAGE);
             }
         });
 
-        // Sign Up button logic
-        signUpButton.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                dispose();
-                new SignUpFrame().setVisible(true);
-            }
+        signUpButton.addActionListener((ActionEvent e) -> {
+            dispose();
+            new SignUpFrame().setVisible(true);
         });
     }
 }

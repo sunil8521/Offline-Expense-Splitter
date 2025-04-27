@@ -4,7 +4,6 @@
     "java.project.referencedLibraries": [
         "lib/**/*.jar",
         "c:\\Users\\sunil\\Downloads\\mysql-connector-j-9.2.0.jar",
-        "c:\\Users\\sunil\\Downloads\\flatlaf-3.6.jar",
-        "c:\\Users\\sunil\\Downloads\\json-20210307.jar"
+        "c:\\Users\\sunil\\Downloads\\flatlaf-3.6.jar"
     ]
 }

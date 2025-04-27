@@ -6,8 +6,7 @@ import utils.SessionManager;
 import javax.swing.UIManager;
 import com.formdev.flatlaf.FlatLightLaf;
 import db.MySQLConnection;
-import ui.HomePage;
-import ui.DashboardUI;
+
 import ui.ExpenseTracker;
 import ui.LoginFrame;
 
@@ -37,7 +36,8 @@ public class App {
                         new ExpenseTracker().setVisible(true);
 
         } else {
-            new ui.LoginFrame().setVisible(true);
+            // new ui.LoginFrame().setVisible(true);
+            new ui.LandingFrame().setVisible(true);
         }
         
     }

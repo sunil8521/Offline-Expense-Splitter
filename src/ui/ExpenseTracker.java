@@ -6,7 +6,9 @@ import java.awt.event.WindowEvent;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 
+import Models.User;
 import controller.TransactionController;
+import controller.TransactionController.RepaymentRequest;
 import db.MySQLConnection;
 import utils.Session;
 import utils.SessionManager;
@@ -161,9 +163,10 @@ public class ExpenseTracker extends JFrame {
     
         // 1) Build header
         JPanel headerPanel = new JPanel(new BorderLayout());
-        JLabel titleLabel = new JLabel("Dashboard");
+        JLabel titleLabel = new JLabel("Welcome, " + Session.currentUsername + "!");
         titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 20));
         headerPanel.add(titleLabel, BorderLayout.WEST);
+        
     
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton showFriendButton   = new JButton("Friend Requests");
@@ -199,6 +202,31 @@ public class ExpenseTracker extends JFrame {
         northPanel.add(summaryContainer);
     
         panel.add(northPanel, BorderLayout.NORTH);
+
+//midlle part
+        JPanel pendingContainer = new JPanel(new BorderLayout());
+        pendingContainer.setBorder(BorderFactory.createTitledBorder("Clear Requests"));
+        pendingContainer.setPreferredSize(new Dimension(0, 200)); 
+    
+        JPanel pendingList = new JPanel();
+        pendingList.setLayout(new BoxLayout(pendingList, BoxLayout.Y_AXIS));
+        JScrollPane pendingScroll = new JScrollPane(pendingList);
+        pendingScroll.setBorder(new EmptyBorder(5,5,5,5));
+        pendingContainer.add(pendingScroll, BorderLayout.CENTER);
+    
+        panel.add(pendingContainer, BorderLayout.CENTER);
+    
+        // load them once:
+        refreshPendingRequests(pendingList);
+        Timer timer = new Timer(7000, e -> refreshPendingRequests(pendingList));
+        timer.start();
+
+
+
+
+
+//last part
+
         JPanel historyContainer = new JPanel(new BorderLayout());
         historyContainer.setBorder(BorderFactory.createTitledBorder("Request History"));
         historyContainer.setPreferredSize(new Dimension(0, 150));  // adjust height
@@ -211,14 +239,87 @@ public class ExpenseTracker extends JFrame {
         historyContainer.add(historyScroll, BorderLayout.CENTER);
         panel.add(historyContainer, BorderLayout.SOUTH);
 
-        refreshRequestHistory(historyList);
+        // refreshRequestHistory(historyList);
+        // refreshPaymenttHistory(historyList);
+        
+        
+        // Poll every 5 seconds
+        refreshCombinedHistory(historyList);
 
+        // schedule periodic refresh
+        final JPanel historyListPanel = historyList;
+        Timer timer2 = new Timer(10_000, e -> {
+            refreshCombinedHistory(historyListPanel);
+        });
+        timer2.setRepeats(true);
+        timer2.start();
         return panel;
     }
     
-    private void refreshRequestHistory(JPanel historyList) {
+
+    private void refreshPendingRequests(JPanel pendingList) {
+        System.out.println("pendingList");  
+        pendingList.removeAll();
+        String me = Session.currentUsername;
+        List<TransactionController.RepaymentRequest> reqs =
+            TransactionController.fetchPendingRepaymentRequests(me);
+    
+        if (reqs.isEmpty()) {
+            JLabel none = new JLabel("No pending clear-requests.");
+            none.setBorder(new EmptyBorder(5,5,5,5));
+            pendingList.add(none);
+        } else {
+            for (TransactionController.RepaymentRequest r : reqs) {
+                JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+                // show borrower + amount + reason
+                row.add(new JLabel(r.borrowerUsername 
+                    + " owes " 
+                    + currencyFormat.format(r.amount)
+                    + " (“" + r.reason + "”)"
+                ));
+
+    
+                JButton approve = new JButton("Approve");
+                approve.addActionListener(e -> {
+                    TransactionController.approveRepaymentRequest(
+                      r.requestId, r.transactionId
+                    );
+
+                    refreshPendingRequests(pendingList);
+
+                    refreshUI("home");
+
+                });
+                row.add(approve);
+    
+                JButton reject = new JButton("Reject");
+                reject.addActionListener(e -> {
+                    TransactionController.rejectRepaymentRequest(r.requestId);
+                    refreshPendingRequests(pendingList);
+                    refreshUI("home");
+                });
+                row.add(reject);
+    
+                pendingList.add(row);
+            }
+        }
+    
+        pendingList.revalidate();
+        pendingList.repaint();
+    }
+
+
+
+
+    private void refreshCombinedHistory(JPanel historyList) {
+        System.out.println("historyList");
         historyList.removeAll();
-    System.out.println("do");
+        String me = Session.currentUsername;
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    
+        // --- Section 1: Your outgoing friend‐request history ---
+        // historyList.add(new JLabel("Friend Request History:"));
+        // historyList.add(Box.createRigidArea(new Dimension(0,5)));
         String sql = """
           SELECT receiver_username, status, requested_at
             FROM friend_requests
@@ -226,35 +327,134 @@ public class ExpenseTracker extends JFrame {
              AND status <> 'pending'
            ORDER BY requested_at DESC
         """;
-    
-        try (PreparedStatement ps = MySQLConnection.connection.prepareStatement(sql)) {
-            ps.setString(1, Session.currentUsername);
+        try (PreparedStatement ps = 
+               MySQLConnection.connection.prepareStatement(sql)) {
+            ps.setString(1, me);
             try (ResultSet rs = ps.executeQuery()) {
-                DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+                boolean any = false;
                 while (rs.next()) {
+                    any = true;
                     String receiver = rs.getString("receiver_username");
                     String status   = rs.getString("status");
-                    Timestamp ts = rs.getTimestamp("requested_at");
-    
-                    String line = receiver
-                                + " — " + status.toUpperCase()
-                                + " (" + ts.toLocalDateTime().format(fmt) + ")";
-    
-                    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-                    row.add(new JLabel(line));
-                    historyList.add(row);
+                    Timestamp ts    = rs.getTimestamp("requested_at");
+                    String line = String.format(
+                        "  ➜ Your friend‐request to %s was %s on %s",
+                        receiver,
+                        status.equalsIgnoreCase("accepted") ? "approved" : "rejected",
+                        ts.toLocalDateTime().format(fmt)
+                      );
+                    historyList.add(new JLabel(line));
+                }
+                if (!any) {
+                    historyList.add(new JLabel("   (you have no past friend-requests)"));
                 }
             }
         } catch (SQLException ex) {
-            JOptionPane.showMessageDialog(this,
-                "Error loading history: " + ex.getMessage(),
-                "Database Error",
-                JOptionPane.ERROR_MESSAGE);
+            ex.printStackTrace();
+            historyList.add(new JLabel("   (error loading friend-request history)"));
+        }
+    
+        historyList.add(Box.createRigidArea(new Dimension(0,10)));
+    
+        // --- Section 2: Your repayment‐request history ---
+        // historyList.add(new JLabel("Repayment Request History:"));
+        // historyList.add(Box.createRigidArea(new Dimension(0,5)));
+        List<TransactionController.RepaymentHistory> payHist =
+            TransactionController.fetchRequestHistory();
+        if (payHist.isEmpty()) {
+            historyList.add(new JLabel("  (none)"));
+        } else {
+            for (var h : payHist) {
+                String when = h.respondedAt.toLocalDateTime().format(fmt);
+
+                String line = String.format(
+              "  ➜ You asked %s to clear dues—%s on %s",
+              h.lenderUsername,
+              h.status.equals("acknowledged") ? "approved" : "rejected",
+              when
+            );
+                historyList.add(new JLabel(line));
+            }
         }
     
         historyList.revalidate();
         historyList.repaint();
     }
+    
+
+    // private void refreshPaymenttHistory(JPanel historyList) {
+    //     historyList.removeAll();
+    //     List<TransactionController.RepaymentHistory> history =
+    //         TransactionController.fetchRequestHistory();
+    
+    //     if (history.isEmpty()) {
+    //         JLabel none = new JLabel("No past requests.");
+    //         none.setBorder(new EmptyBorder(5,5,5,5));
+    //         historyList.add(none);
+    //     } else {
+    //         DateTimeFormatter fmt = 
+    //             DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    //         for (var h : history) {
+    //             JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+    //             String text = String.format(
+    //               "%s — %s cleare payment request at %s",
+    //               h.lenderUsername,
+    //               h.status.equals("acknowledged") ? "Approved" : "Rejected",
+    //               h.respondedAt.toLocalDateTime().format(fmt)
+    //             );
+    //             row.add(new JLabel(text));
+    //             historyList.add(row);
+    //         }
+    //     }
+    
+    //     historyList.revalidate();
+    //     historyList.repaint();
+    // }
+    
+
+    // private void refreshRequestHistory(JPanel historyList) {
+
+    //     historyList.removeAll();
+    // System.out.println("requestHistory");
+    //     String sql = """
+    //       SELECT receiver_username, status, requested_at
+    //         FROM friend_requests
+    //        WHERE sender_username = ?
+    //          AND status <> 'pending'
+    //        ORDER BY requested_at DESC
+    //     """;
+    
+    //     try (PreparedStatement ps = MySQLConnection.connection.prepareStatement(sql)) {
+    //         ps.setString(1, Session.currentUsername);
+    //         try (ResultSet rs = ps.executeQuery()) {
+    //             DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+    //             while (rs.next()) {
+    //                 String receiver = rs.getString("receiver_username");
+    //                 String status   = rs.getString("status");
+    //                 Timestamp ts = rs.getTimestamp("requested_at");
+    
+    //                 String line = receiver
+    //                             + " — " + status.toUpperCase() +" friend request"
+    //                             + " (" + ts.toLocalDateTime().format(fmt) + ")";
+    
+    //                 JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+    //                 row.add(new JLabel(line));
+    //                 historyList.add(row);
+    //             }
+    //         }
+    //     } catch (SQLException ex) {
+    //         JOptionPane.showMessageDialog(this,
+    //             "Error loading history: " + ex.getMessage(),
+    //             "Database Error",
+    //             JOptionPane.ERROR_MESSAGE);
+    //     }
+    
+    //     historyList.revalidate();
+    //     historyList.repaint();
+    // }
+
+
+
 
     private JPanel createSummaryCard(String title, double amount) {
         JPanel card = new JPanel(new BorderLayout());
@@ -414,78 +614,157 @@ public class ExpenseTracker extends JFrame {
 
 
     private JPanel createProfilePanel() {
+        String currentUser = Session.currentUsername;
         JPanel panel = new JPanel(new BorderLayout(10, 10));
         panel.setBorder(new EmptyBorder(20, 20, 20, 20));
-        
+    
+        // Title
         JLabel titleLabel = new JLabel("Profile");
-        titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 20));
+        titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 24));
         panel.add(titleLabel, BorderLayout.NORTH);
-        
-        // Profile form
-        JPanel formPanel = new JPanel(new GridBagLayout());
-        formPanel.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(220, 220, 220), 1, true),
-            BorderFactory.createEmptyBorder(20, 20, 20, 20)
+    
+        // Form container
+        JPanel form = new JPanel(new GridBagLayout());
+        form.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(200, 200, 200), 1, true),
+            new EmptyBorder(20, 20, 20, 20)
         ));
-        
         GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(8, 8, 8, 8);
         gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(5, 5, 5, 5);
-        
-        // Name field
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        JLabel nameLabel = new JLabel("Name");
-        formPanel.add(nameLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 1;
-        gbc.weightx = 1.0;
-        JTextField nameField = new JTextField("John Doe");
-        formPanel.add(nameField, gbc);
-        
-        // Email field
-        gbc.gridx = 0;
-        gbc.gridy = 2;
-        gbc.weightx = 0;
-        JLabel emailLabel = new JLabel("Email");
-        formPanel.add(emailLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 3;
-        gbc.weightx = 1.0;
-        JTextField emailField = new JTextField("john.doe@example.com");
-        formPanel.add(emailField, gbc);
-        
-        // Phone field
-        gbc.gridx = 0;
-        gbc.gridy = 4;
-        gbc.weightx = 0;
-        JLabel phoneLabel = new JLabel("Phone");
-        formPanel.add(phoneLabel, gbc);
-        
-        gbc.gridx = 0;
-        gbc.gridy = 5;
-        gbc.weightx = 1.0;
-        JTextField phoneField = new JTextField("+1 (555) 123-4567");
-        formPanel.add(phoneField, gbc);
-        
-        // Save button
-        gbc.gridx = 0;
-        gbc.gridy = 6;
-        gbc.insets = new Insets(15, 5, 5, 5);
+    
+        // Row 0: Username
+        gbc.gridx = 0; gbc.gridy = 0;
+        form.add(new JLabel("Username:"), gbc);
+        JTextField usernameField = new JTextField(currentUser, 20);
+        gbc.gridx = 1;
+        form.add(usernameField, gbc);
+    
+        // Row 1: Full Name
+        gbc.gridy++; gbc.gridx = 0;
+        form.add(new JLabel("Full Name:"), gbc);
+        JTextField fullNameField = new JTextField( Session.currentUserFullName, 20 );
+        gbc.gridx = 1;
+        form.add(fullNameField, gbc);
+    
+        // Row 2: New Password
+        gbc.gridy++; gbc.gridx = 0;
+        form.add(new JLabel("New Password:"), gbc);
+        JPasswordField newPassField = new JPasswordField(20);
+        gbc.gridx = 1;
+        form.add(newPassField, gbc);
+    
+        // Row 3: Confirm Password
+        gbc.gridy++; gbc.gridx = 0;
+        form.add(new JLabel("Confirm Password:"), gbc);
+        JPasswordField confirmPassField = new JPasswordField(20);
+        gbc.gridx = 1;
+        form.add(confirmPassField, gbc);
+    
+        // Row 4: Save Button
+        gbc.gridy++; gbc.gridx = 0; gbc.gridwidth = 2;
         JButton saveButton = new JButton("Save Changes");
-        formPanel.add(saveButton, gbc);
-        
-        // Add form to a container with some spacing
-        JPanel formContainer = new JPanel(new BorderLayout());
-        formContainer.add(formPanel, BorderLayout.NORTH);
-        
-        panel.add(formContainer, BorderLayout.CENTER);
-        
+        saveButton.setPreferredSize(new Dimension(160, 35));
+        form.add(saveButton, gbc);
+    
+        panel.add(form, BorderLayout.CENTER);
+    
+        // Save logic
+        saveButton.addActionListener(ev -> {
+            String newUsername = usernameField.getText().trim();
+            String newFullName = fullNameField.getText().trim();
+            String newPass = new String(newPassField.getPassword());
+            String confirm = new String(confirmPassField.getPassword());
+    
+            // 1) Check non-empty
+            if (newUsername.isEmpty() || newFullName.isEmpty()) {
+                JOptionPane.showMessageDialog(this,
+                  "Username and Full Name cannot be empty.",
+                  "Validation Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+    
+            // 2) Validate username uniqueness if changed
+            if (!newUsername.equals(currentUser)) {
+                String checkSql = "SELECT COUNT(*) FROM users WHERE username = ?";
+                try (PreparedStatement ps = 
+                       MySQLConnection.connection.prepareStatement(checkSql)) {
+                    ps.setString(1, newUsername);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        rs.next();
+                        if (rs.getInt(1) > 0) {
+                            JOptionPane.showMessageDialog(this,
+                              "Username already taken.",
+                              "Validation Error", JOptionPane.ERROR_MESSAGE);
+                            return;
+                        }
+                    }
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(this,
+                      "Error checking username: " + ex.getMessage(),
+                      "Database Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+            }
+    
+            // 3) Validate password match if provided
+            boolean changingPwd = false;
+            if (!newPass.isEmpty()) {
+                if (!newPass.equals(confirm)) {
+                    JOptionPane.showMessageDialog(this,
+                      "Passwords do not match.",
+                      "Validation Error", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                changingPwd = true;
+            }
+    
+            // 4) Build UPDATE statement
+            StringBuilder sql = new StringBuilder("UPDATE users SET username = ?, full_name = ?");
+            if (changingPwd) sql.append(", password = ?");
+            sql.append(" WHERE username = ?");
+    
+            try (PreparedStatement ps = 
+                   MySQLConnection.connection.prepareStatement(sql.toString())) {
+                int idx = 1;
+                ps.setString(idx++, newUsername);
+                ps.setString(idx++, newFullName);
+                if (changingPwd) {
+                    ps.setString(idx++, newPass);
+                }
+                ps.setString(idx, currentUser);
+                ps.executeUpdate();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+                JOptionPane.showMessageDialog(this,
+                  "Failed to save profile: " + ex.getMessage(),
+                  "Database Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+    
+            // 5) Post‐update workflows
+            Session.currentUsername = newUsername;              // update session
+            SessionManager.saveSession(newUsername);           // persist
+    
+            if (changingPwd) {
+                JOptionPane.showMessageDialog(this,
+                  "Password changed. Please log in again.",
+                  "Password Updated", JOptionPane.INFORMATION_MESSAGE);
+                dispose();
+                new LoginFrame().setVisible(true);
+            } else {
+                JOptionPane.showMessageDialog(this,
+                  "Profile updated successfully!",
+                  "Success", JOptionPane.INFORMATION_MESSAGE);
+                // Refresh the UI to reflect new username
+                refreshUI("profile");
+            }
+        });
+    
         return panel;
     }
-   
+    
     private JPanel createTransactionCard(Transaction transaction) {
         JPanel card = new JPanel(new BorderLayout());
         card.setBorder(BorderFactory.createCompoundBorder(
