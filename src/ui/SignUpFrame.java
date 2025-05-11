@@ -86,6 +86,13 @@ public class SignUpFrame extends JFrame {
         String fullName = fullNameField.getText().trim();
         String password = new String(passwordField.getPassword());
 
+            if (username.isEmpty() || password.isEmpty()||fullName.isEmpty()) {
+                JOptionPane.showMessageDialog(
+                    this, "Please fill in all fields.", "Missing Data", JOptionPane.WARNING_MESSAGE
+                );
+                return;
+            }
+
         if (Auth.signUp(username, fullName, password)) {
             JOptionPane.showMessageDialog(
                 this,

@@ -49,13 +49,12 @@ public class ExpenseTracker extends JFrame {
 
     public ExpenseTracker() {
         // Set up the frame
-        setTitle("Expense Tracker");
+        setTitle("SpendWise");
         setSize(900, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
         
-        // Initialize sample data
-        // initializeSampleData();
+       
         
         // Set up the main layout
         setLayout(new BorderLayout());
@@ -88,7 +87,7 @@ public class ExpenseTracker extends JFrame {
         sidebar.setPreferredSize(new Dimension(180, getHeight()));
         
         // App title
-        JLabel titleLabel = new JLabel("Expense Tracker");
+        JLabel titleLabel = new JLabel("SpendWise");
         titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 16));
         titleLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
         titleLabel.setBorder(new EmptyBorder(20, 10, 20, 10));
@@ -272,11 +271,17 @@ public class ExpenseTracker extends JFrame {
             for (TransactionController.RepaymentRequest r : reqs) {
                 JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
                 // show borrower + amount + reason
-                row.add(new JLabel(r.borrowerUsername 
-                    + " owes " 
-                    + currencyFormat.format(r.amount)
-                    + " (“" + r.reason + "”)"
-                ));
+                // row.add(new JLabel(r.borrowerUsername 
+                //     + " owes " 
+                //     + currencyFormat.format(r.amount)
+                //     + " (“" + r.reason + "”)"
+                // ));
+                row.add(new JLabel(
+    r.borrowerUsername + " wants to settle the amount of " +
+    currencyFormat.format(r.amount) +
+    " for \"" + r.reason + "\""
+));
+
 
     
                 JButton approve = new JButton("Approve");
@@ -321,11 +326,11 @@ public class ExpenseTracker extends JFrame {
         // historyList.add(new JLabel("Friend Request History:"));
         // historyList.add(Box.createRigidArea(new Dimension(0,5)));
         String sql = """
-          SELECT receiver_username, status, requested_at
-            FROM friend_requests
+          SELECT receiver_username, status, action_at
+            FROM friend_request_history
            WHERE sender_username = ?
              AND status <> 'pending'
-           ORDER BY requested_at DESC
+           ORDER BY action_at DESC
         """;
         try (PreparedStatement ps = 
                MySQLConnection.connection.prepareStatement(sql)) {
@@ -336,9 +341,9 @@ public class ExpenseTracker extends JFrame {
                     any = true;
                     String receiver = rs.getString("receiver_username");
                     String status   = rs.getString("status");
-                    Timestamp ts    = rs.getTimestamp("requested_at");
+                    Timestamp ts    = rs.getTimestamp("action_at");
                     String line = String.format(
-                        "  ➜ Your friend‐request to %s was %s on %s",
+                        "➜ Your friend‐request to %s was %s on %s",
                         receiver,
                         status.equalsIgnoreCase("accepted") ? "approved" : "rejected",
                         ts.toLocalDateTime().format(fmt)
@@ -346,12 +351,12 @@ public class ExpenseTracker extends JFrame {
                     historyList.add(new JLabel(line));
                 }
                 if (!any) {
-                    historyList.add(new JLabel("   (you have no past friend-requests)"));
+                    historyList.add(new JLabel(""));
                 }
             }
         } catch (SQLException ex) {
             ex.printStackTrace();
-            historyList.add(new JLabel("   (error loading friend-request history)"));
+            historyList.add(new JLabel("(error loading friend-request history)"));
         }
     
         historyList.add(Box.createRigidArea(new Dimension(0,10)));
@@ -362,13 +367,13 @@ public class ExpenseTracker extends JFrame {
         List<TransactionController.RepaymentHistory> payHist =
             TransactionController.fetchRequestHistory();
         if (payHist.isEmpty()) {
-            historyList.add(new JLabel("  (none)"));
+            historyList.add(new JLabel(""));
         } else {
             for (var h : payHist) {
                 String when = h.respondedAt.toLocalDateTime().format(fmt);
 
                 String line = String.format(
-              "  ➜ You asked %s to clear dues—%s on %s",
+              "➜ You asked %s to clear dues—%s on %s",
               h.lenderUsername,
               h.status.equals("acknowledged") ? "approved" : "rejected",
               when
@@ -612,158 +617,258 @@ public class ExpenseTracker extends JFrame {
 
 
 
+private JPanel createProfilePanel() {
+    String currentUser = Session.currentUsername;
+    JPanel panel = new JPanel(new BorderLayout(10, 10));
+    panel.setBorder(new EmptyBorder(20, 20, 20, 20));
 
-    private JPanel createProfilePanel() {
-        String currentUser = Session.currentUsername;
-        JPanel panel = new JPanel(new BorderLayout(10, 10));
-        panel.setBorder(new EmptyBorder(20, 20, 20, 20));
-    
-        // Title
-        JLabel titleLabel = new JLabel("Profile");
-        titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 24));
-        panel.add(titleLabel, BorderLayout.NORTH);
-    
-        // Form container
-        JPanel form = new JPanel(new GridBagLayout());
-        form.setBorder(BorderFactory.createCompoundBorder(
-            BorderFactory.createLineBorder(new Color(200, 200, 200), 1, true),
-            new EmptyBorder(20, 20, 20, 20)
-        ));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.insets = new Insets(8, 8, 8, 8);
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-    
-        // Row 0: Username
-        gbc.gridx = 0; gbc.gridy = 0;
-        form.add(new JLabel("Username:"), gbc);
-        JTextField usernameField = new JTextField(currentUser, 20);
-        gbc.gridx = 1;
-        form.add(usernameField, gbc);
-    
-        // Row 1: Full Name
-        gbc.gridy++; gbc.gridx = 0;
-        form.add(new JLabel("Full Name:"), gbc);
-        JTextField fullNameField = new JTextField( Session.currentUserFullName, 20 );
-        gbc.gridx = 1;
-        form.add(fullNameField, gbc);
-    
-        // Row 2: New Password
-        gbc.gridy++; gbc.gridx = 0;
-        form.add(new JLabel("New Password:"), gbc);
-        JPasswordField newPassField = new JPasswordField(20);
-        gbc.gridx = 1;
-        form.add(newPassField, gbc);
-    
-        // Row 3: Confirm Password
-        gbc.gridy++; gbc.gridx = 0;
-        form.add(new JLabel("Confirm Password:"), gbc);
-        JPasswordField confirmPassField = new JPasswordField(20);
-        gbc.gridx = 1;
-        form.add(confirmPassField, gbc);
-    
-        // Row 4: Save Button
-        gbc.gridy++; gbc.gridx = 0; gbc.gridwidth = 2;
-        JButton saveButton = new JButton("Save Changes");
-        saveButton.setPreferredSize(new Dimension(160, 35));
-        form.add(saveButton, gbc);
-    
-        panel.add(form, BorderLayout.CENTER);
-    
-        // Save logic
-        saveButton.addActionListener(ev -> {
-            String newUsername = usernameField.getText().trim();
-            String newFullName = fullNameField.getText().trim();
-            String newPass = new String(newPassField.getPassword());
-            String confirm = new String(confirmPassField.getPassword());
-    
-            // 1) Check non-empty
-            if (newUsername.isEmpty() || newFullName.isEmpty()) {
-                JOptionPane.showMessageDialog(this,
-                  "Username and Full Name cannot be empty.",
-                  "Validation Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-    
-            // 2) Validate username uniqueness if changed
-            if (!newUsername.equals(currentUser)) {
-                String checkSql = "SELECT COUNT(*) FROM users WHERE username = ?";
-                try (PreparedStatement ps = 
-                       MySQLConnection.connection.prepareStatement(checkSql)) {
-                    ps.setString(1, newUsername);
-                    try (ResultSet rs = ps.executeQuery()) {
-                        rs.next();
-                        if (rs.getInt(1) > 0) {
-                            JOptionPane.showMessageDialog(this,
-                              "Username already taken.",
-                              "Validation Error", JOptionPane.ERROR_MESSAGE);
-                            return;
-                        }
+    // Title
+    JLabel titleLabel = new JLabel("Change Password");
+    titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 24));
+    panel.add(titleLabel, BorderLayout.NORTH);
+
+    // Form container
+    JPanel form = new JPanel(new GridBagLayout());
+    form.setBorder(BorderFactory.createCompoundBorder(
+        BorderFactory.createLineBorder(new Color(200, 200, 200), 1, true),
+        new EmptyBorder(20, 20, 20, 20)
+    ));
+    GridBagConstraints gbc = new GridBagConstraints();
+    gbc.insets = new Insets(8, 8, 8, 8);
+    gbc.fill = GridBagConstraints.HORIZONTAL;
+
+    // Row 0: Current Password
+    gbc.gridx = 0; gbc.gridy = 0;
+    form.add(new JLabel("Current Password:"), gbc);
+    JPasswordField currentPassField = new JPasswordField(20);
+    gbc.gridx = 1;
+    form.add(currentPassField, gbc);
+
+    // Row 1: New Password
+    gbc.gridy++; gbc.gridx = 0;
+    form.add(new JLabel("New Password:"), gbc);
+    JPasswordField newPassField = new JPasswordField(20);
+    gbc.gridx = 1;
+    form.add(newPassField, gbc);
+
+    // Row 2: Save Button
+    gbc.gridy++; gbc.gridx = 0; gbc.gridwidth = 2;
+    JButton saveButton = new JButton("Change Password");
+    saveButton.setPreferredSize(new Dimension(160, 35));
+    form.add(saveButton, gbc);
+
+    panel.add(form, BorderLayout.CENTER);
+
+    // Save logic
+    saveButton.addActionListener(ev -> {
+        String currentPass = new String(currentPassField.getPassword());
+        String newPass = new String(newPassField.getPassword());
+
+        if (currentPass.isEmpty() || newPass.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                "Both fields are required.",
+                "Validation Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        String verifySql = "SELECT password FROM users WHERE username = ?";
+        try (PreparedStatement ps = MySQLConnection.connection.prepareStatement(verifySql)) {
+            ps.setString(1, currentUser);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    String actualPassword = rs.getString("password");
+                    if (!actualPassword.equals(currentPass)) {
+                        JOptionPane.showMessageDialog(this,
+                            "Current password is incorrect.",
+                            "Authentication Failed", JOptionPane.ERROR_MESSAGE);
+                        return;
                     }
-                } catch (SQLException ex) {
-                    ex.printStackTrace();
+                } else {
                     JOptionPane.showMessageDialog(this,
-                      "Error checking username: " + ex.getMessage(),
-                      "Database Error", JOptionPane.ERROR_MESSAGE);
+                        "User not found.",
+                        "Error", JOptionPane.ERROR_MESSAGE);
                     return;
                 }
             }
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+                "Database error: " + ex.getMessage(),
+                "Error", JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        String updateSql = "UPDATE users SET password = ? WHERE username = ?";
+        try (PreparedStatement ps = MySQLConnection.connection.prepareStatement(updateSql)) {
+            ps.setString(1, newPass);
+            ps.setString(2, currentUser);
+            ps.executeUpdate();
+            JOptionPane.showMessageDialog(this,
+                "Password updated successfully. Please log in again.",
+                "Success", JOptionPane.INFORMATION_MESSAGE);
+            dispose();
+            new LoginFrame().setVisible(true);
+        } catch (SQLException ex) {
+            ex.printStackTrace();
+            JOptionPane.showMessageDialog(this,
+                "Failed to update password: " + ex.getMessage(),
+                "Database Error", JOptionPane.ERROR_MESSAGE);
+        }
+    });
+
+    return panel;
+}
+    // private JPanel createProfilePanel() {
+    //     String currentUser = Session.currentUsername;
+    //     JPanel panel = new JPanel(new BorderLayout(10, 10));
+    //     panel.setBorder(new EmptyBorder(20, 20, 20, 20));
     
-            // 3) Validate password match if provided
-            boolean changingPwd = false;
-            if (!newPass.isEmpty()) {
-                if (!newPass.equals(confirm)) {
-                    JOptionPane.showMessageDialog(this,
-                      "Passwords do not match.",
-                      "Validation Error", JOptionPane.ERROR_MESSAGE);
-                    return;
-                }
-                changingPwd = true;
-            }
+    //     // Title
+    //     JLabel titleLabel = new JLabel("Profile");
+    //     titleLabel.setFont(new Font("Sans-serif", Font.BOLD, 24));
+    //     panel.add(titleLabel, BorderLayout.NORTH);
     
-            // 4) Build UPDATE statement
-            StringBuilder sql = new StringBuilder("UPDATE users SET username = ?, full_name = ?");
-            if (changingPwd) sql.append(", password = ?");
-            sql.append(" WHERE username = ?");
+    //     // Form container
+    //     JPanel form = new JPanel(new GridBagLayout());
+    //     form.setBorder(BorderFactory.createCompoundBorder(
+    //         BorderFactory.createLineBorder(new Color(200, 200, 200), 1, true),
+    //         new EmptyBorder(20, 20, 20, 20)
+    //     ));
+    //     GridBagConstraints gbc = new GridBagConstraints();
+    //     gbc.insets = new Insets(8, 8, 8, 8);
+    //     gbc.fill = GridBagConstraints.HORIZONTAL;
     
-            try (PreparedStatement ps = 
-                   MySQLConnection.connection.prepareStatement(sql.toString())) {
-                int idx = 1;
-                ps.setString(idx++, newUsername);
-                ps.setString(idx++, newFullName);
-                if (changingPwd) {
-                    ps.setString(idx++, newPass);
-                }
-                ps.setString(idx, currentUser);
-                ps.executeUpdate();
-            } catch (SQLException ex) {
-                ex.printStackTrace();
-                JOptionPane.showMessageDialog(this,
-                  "Failed to save profile: " + ex.getMessage(),
-                  "Database Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
+    //     // Row 0: Username
+    //     gbc.gridx = 0; gbc.gridy = 0;
+    //     form.add(new JLabel("Username:"), gbc);
+    //     JTextField usernameField = new JTextField(currentUser, 20);
+    //     gbc.gridx = 1;
+    //     form.add(usernameField, gbc);
     
-            // 5) Post‐update workflows
-            Session.currentUsername = newUsername;              // update session
-            SessionManager.saveSession(newUsername);           // persist
+    //     // Row 1: Full Name
+    //     gbc.gridy++; gbc.gridx = 0;
+    //     form.add(new JLabel("Full Name:"), gbc);
+    //     JTextField fullNameField = new JTextField( Session.currentUserFullName, 20 );
+    //     gbc.gridx = 1;
+    //     form.add(fullNameField, gbc);
     
-            if (changingPwd) {
-                JOptionPane.showMessageDialog(this,
-                  "Password changed. Please log in again.",
-                  "Password Updated", JOptionPane.INFORMATION_MESSAGE);
-                dispose();
-                new LoginFrame().setVisible(true);
-            } else {
-                JOptionPane.showMessageDialog(this,
-                  "Profile updated successfully!",
-                  "Success", JOptionPane.INFORMATION_MESSAGE);
-                // Refresh the UI to reflect new username
-                refreshUI("profile");
-            }
-        });
+    //     // Row 2: New Password
+    //     gbc.gridy++; gbc.gridx = 0;
+    //     form.add(new JLabel("New Password:"), gbc);
+    //     JPasswordField newPassField = new JPasswordField(20);
+    //     gbc.gridx = 1;
+    //     form.add(newPassField, gbc);
     
-        return panel;
-    }
+    //     // Row 3: Confirm Password
+    //     gbc.gridy++; gbc.gridx = 0;
+    //     form.add(new JLabel("Confirm Password:"), gbc);
+    //     JPasswordField confirmPassField = new JPasswordField(20);
+    //     gbc.gridx = 1;
+    //     form.add(confirmPassField, gbc);
+    
+    //     // Row 4: Save Button
+    //     gbc.gridy++; gbc.gridx = 0; gbc.gridwidth = 2;
+    //     JButton saveButton = new JButton("Save Changes");
+    //     saveButton.setPreferredSize(new Dimension(160, 35));
+    //     form.add(saveButton, gbc);
+    
+    //     panel.add(form, BorderLayout.CENTER);
+    
+    //     // Save logic
+    //     saveButton.addActionListener(ev -> {
+    //         String newUsername = usernameField.getText().trim();
+    //         String newFullName = fullNameField.getText().trim();
+    //         String newPass = new String(newPassField.getPassword());
+    //         String confirm = new String(confirmPassField.getPassword());
+    
+    //         // 1) Check non-empty
+    //         if (newUsername.isEmpty() || newFullName.isEmpty()) {
+    //             JOptionPane.showMessageDialog(this,
+    //               "Username and Full Name cannot be empty.",
+    //               "Validation Error", JOptionPane.ERROR_MESSAGE);
+    //             return;
+    //         }
+    
+    //         // 2) Validate username uniqueness if changed
+    //         if (!newUsername.equals(currentUser)) {
+    //             String checkSql = "SELECT COUNT(*) FROM users WHERE username = ?";
+    //             try (PreparedStatement ps = 
+    //                    MySQLConnection.connection.prepareStatement(checkSql)) {
+    //                 ps.setString(1, newUsername);
+    //                 try (ResultSet rs = ps.executeQuery()) {
+    //                     rs.next();
+    //                     if (rs.getInt(1) > 0) {
+    //                         JOptionPane.showMessageDialog(this,
+    //                           "Username already taken.",
+    //                           "Validation Error", JOptionPane.ERROR_MESSAGE);
+    //                         return;
+    //                     }
+    //                 }
+    //             } catch (SQLException ex) {
+    //                 ex.printStackTrace();
+    //                 JOptionPane.showMessageDialog(this,
+    //                   "Error checking username: " + ex.getMessage(),
+    //                   "Database Error", JOptionPane.ERROR_MESSAGE);
+    //                 return;
+    //             }
+    //         }
+    
+    //         // 3) Validate password match if provided
+    //         boolean changingPwd = false;
+    //         if (!newPass.isEmpty()) {
+    //             if (!newPass.equals(confirm)) {
+    //                 JOptionPane.showMessageDialog(this,
+    //                   "Passwords do not match.",
+    //                   "Validation Error", JOptionPane.ERROR_MESSAGE);
+    //                 return;
+    //             }
+    //             changingPwd = true;
+    //         }
+    
+    //         // 4) Build UPDATE statement
+    //         StringBuilder sql = new StringBuilder("UPDATE users SET username = ?, full_name = ?");
+    //         if (changingPwd) sql.append(", password = ?");
+    //         sql.append(" WHERE username = ?");
+    
+    //         try (PreparedStatement ps = 
+    //                MySQLConnection.connection.prepareStatement(sql.toString())) {
+    //             int idx = 1;
+    //             ps.setString(idx++, newUsername);
+    //             ps.setString(idx++, newFullName);
+    //             if (changingPwd) {
+    //                 ps.setString(idx++, newPass);
+    //             }
+    //             ps.setString(idx, currentUser);
+    //             ps.executeUpdate();
+    //         } catch (SQLException ex) {
+    //             ex.printStackTrace();
+    //             JOptionPane.showMessageDialog(this,
+    //               "Failed to save profile: " + ex.getMessage(),
+    //               "Database Error", JOptionPane.ERROR_MESSAGE);
+    //             return;
+    //         }
+    
+    //         // 5) Post‐update workflows
+    //         Session.currentUsername = newUsername;              // update session
+    //         SessionManager.saveSession(newUsername);           // persist
+    
+    //         if (changingPwd) {
+    //             JOptionPane.showMessageDialog(this,
+    //               "Password changed. Please log in again.",
+    //               "Password Updated", JOptionPane.INFORMATION_MESSAGE);
+    //             dispose();
+    //             new LoginFrame().setVisible(true);
+    //         } else {
+    //             JOptionPane.showMessageDialog(this,
+    //               "Profile updated successfully!",
+    //               "Success", JOptionPane.INFORMATION_MESSAGE);
+    //             // Refresh the UI to reflect new username
+    //             refreshUI("profile");
+    //         }
+    //     });
+    
+    //     return panel;
+    // }
     
     private JPanel createTransactionCard(Transaction transaction) {
         JPanel card = new JPanel(new BorderLayout());
@@ -899,25 +1004,87 @@ public class ExpenseTracker extends JFrame {
 
 
 private void sendFriendRequest(String toUsername) {
-    String sql = 
-      "INSERT INTO friend_requests (sender_username, receiver_username) " +
-      "VALUES (?, ?)";
-    try (PreparedStatement ps = 
-            MySQLConnection.connection.prepareStatement(sql)) {
-        ps.setString(1, Session.currentUsername);
-        ps.setString(2, toUsername);
-        ps.executeUpdate();
+    String checkSql = """
+        SELECT status FROM friend_requests
+        WHERE sender_username = ? AND receiver_username = ?
+    """;
+
+    String insertSql = """
+        INSERT INTO friend_requests (sender_username, receiver_username)
+        VALUES (?, ?)
+    """;
+
+    String checkHistorySql = """
+        SELECT status FROM friend_request_history
+        WHERE sender_username = ? AND receiver_username = ?
+    """;
+
+    String updateHistorySql = """
+        UPDATE friend_request_history
+        SET status = 'pending', action_at = CURRENT_TIMESTAMP
+        WHERE sender_username = ? AND receiver_username = ?
+    """;
+
+    String insertHistorySql = """
+        INSERT INTO friend_request_history (sender_username, receiver_username, status)
+        VALUES (?, ?, 'pending')
+    """;
+
+    try (
+        PreparedStatement checkPs = MySQLConnection.connection.prepareStatement(checkSql);
+        PreparedStatement insertPs = MySQLConnection.connection.prepareStatement(insertSql);
+        PreparedStatement checkHistoryPs = MySQLConnection.connection.prepareStatement(checkHistorySql);
+        PreparedStatement updateHistoryPs = MySQLConnection.connection.prepareStatement(updateHistorySql);
+        PreparedStatement insertHistoryPs = MySQLConnection.connection.prepareStatement(insertHistorySql)
+    ) {
+        checkPs.setString(1, Session.currentUsername);
+        checkPs.setString(2, toUsername);
+        ResultSet rs = checkPs.executeQuery();
+
+        if (rs.next()) {
+            String status = rs.getString("status");
+            if ("pending".equalsIgnoreCase(status)) {
+                JOptionPane.showMessageDialog(this,
+                    "Friend request is already pending.",
+                    "Already Sent", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+        } else {
+            // Insert into friend_requests table
+            insertPs.setString(1, Session.currentUsername);
+            insertPs.setString(2, toUsername);
+            insertPs.executeUpdate();
+        }
+
+        // Handle friend_request_history
+        checkHistoryPs.setString(1, Session.currentUsername);
+        checkHistoryPs.setString(2, toUsername);
+        ResultSet hrs = checkHistoryPs.executeQuery();
+
+        if (hrs.next()) {
+            String oldStatus = hrs.getString("status");
+            if (!"pending".equalsIgnoreCase(oldStatus)) {
+                updateHistoryPs.setString(1, Session.currentUsername);
+                updateHistoryPs.setString(2, toUsername);
+                updateHistoryPs.executeUpdate();
+            }
+        } else {
+            insertHistoryPs.setString(1, Session.currentUsername);
+            insertHistoryPs.setString(2, toUsername);
+            insertHistoryPs.executeUpdate();
+        }
+
         JOptionPane.showMessageDialog(this,
             "Friend request sent to " + toUsername,
-            "Request Sent",
-            JOptionPane.INFORMATION_MESSAGE);
+            "Request Sent", JOptionPane.INFORMATION_MESSAGE);
+
     } catch (SQLException ex) {
         JOptionPane.showMessageDialog(this,
             "Failed to send request: " + ex.getMessage(),
-            "Error",
-            JOptionPane.ERROR_MESSAGE);
+            "Error", JOptionPane.ERROR_MESSAGE);
     }
 }
+
 
     
 private void showFriendRequestsDialog() {
@@ -1015,65 +1182,104 @@ private List<String> fetchPendingRequests() {
 
 // Approve: update request + insert into friendships
 private void approveFriendRequest(String sender) {
-    String upd = """
-        UPDATE friend_requests
-           SET status = 'accepted'
-         WHERE sender_username = ?
-           AND receiver_username = ?
-      """;
-    String ins = """
+    String deletePending = """
+        DELETE FROM friend_requests
+        WHERE sender_username = ? AND receiver_username = ?
+    """;
+
+    String updateHistory = """
+        UPDATE friend_request_history
+        SET status = 'accepted', action_at = CURRENT_TIMESTAMP
+        WHERE sender_username = ? AND receiver_username = ?
+          AND status = 'pending'
+    """;
+
+    String insertFriendship = """
         INSERT INTO friendships (user1, user2)
         VALUES (
           LEAST(?, ?),
           GREATEST(?, ?)
         )
-        ON DUPLICATE KEY
-          UPDATE since = since
-      """;
+        ON DUPLICATE KEY UPDATE since = since
+    """;
+
     try {
         MySQLConnection.connection.setAutoCommit(false);
 
-        try (PreparedStatement ps1 = 
-               MySQLConnection.connection.prepareStatement(upd)) {
+        // Step 1: Delete from friend_requests
+        try (PreparedStatement ps1 =
+                     MySQLConnection.connection.prepareStatement(deletePending)) {
             ps1.setString(1, sender);
             ps1.setString(2, Session.currentUsername);
             ps1.executeUpdate();
         }
-        try (PreparedStatement ps2 = 
-               MySQLConnection.connection.prepareStatement(ins)) {
+
+        // Step 2: Update friend_request_history
+        try (PreparedStatement ps2 =
+                     MySQLConnection.connection.prepareStatement(updateHistory)) {
             ps2.setString(1, sender);
             ps2.setString(2, Session.currentUsername);
-            ps2.setString(3, sender);
-            ps2.setString(4, Session.currentUsername);
             ps2.executeUpdate();
         }
+
+        // Step 3: Insert into friendships
+        try (PreparedStatement ps3 =
+                     MySQLConnection.connection.prepareStatement(insertFriendship)) {
+            ps3.setString(1, sender);
+            ps3.setString(2, Session.currentUsername);
+            ps3.setString(3, sender);
+            ps3.setString(4, Session.currentUsername);
+            ps3.executeUpdate();
+        }
+
         MySQLConnection.connection.commit();
         JOptionPane.showMessageDialog(this,
             "You are now friends with " + sender,
             "Request Approved", JOptionPane.INFORMATION_MESSAGE);
+
     } catch (SQLException ex) {
-        try { MySQLConnection.connection.rollback(); } catch(Exception ignore){}
+        try {
+            MySQLConnection.connection.rollback();
+        } catch (Exception ignore) {}
         JOptionPane.showMessageDialog(this,
             "Failed to approve: " + ex.getMessage(),
             "Error", JOptionPane.ERROR_MESSAGE);
     } finally {
-        try { MySQLConnection.connection.setAutoCommit(true); } catch(Exception ignore){}
+        try {
+            MySQLConnection.connection.setAutoCommit(true);
+        } catch (Exception ignore) {}
     }
 }
 
+
 // Reject: simply update the status
 private void rejectFriendRequest(String sender) {
-    String sql = """
-        UPDATE friend_requests
-           SET status = 'rejected'
-         WHERE sender_username = ?
-           AND receiver_username = ?
-      """;
-    try (PreparedStatement ps = 
-           MySQLConnection.connection.prepareStatement(sql)) {
-        ps.setString(1, sender);
-        ps.setString(2, Session.currentUsername);
-        ps.executeUpdate();
+    String deleteSql = """
+        DELETE FROM friend_requests
+        WHERE sender_username = ? AND receiver_username = ?
+    """;
+
+    String updateHistorySql = """
+        UPDATE friend_request_history
+        SET status = 'rejected', action_at = CURRENT_TIMESTAMP
+        WHERE sender_username = ? AND receiver_username = ?
+          AND status = 'pending'
+    """;
+
+    try (
+        PreparedStatement deletePs = MySQLConnection.connection.prepareStatement(deleteSql);
+        PreparedStatement updateHistoryPs = MySQLConnection.connection.prepareStatement(updateHistorySql)
+    ) {
+        // Delete from friend_requests (pending only table)
+        deletePs.setString(1, sender);
+        deletePs.setString(2, Session.currentUsername);
+        deletePs.executeUpdate();
+
+        // Update history table with rejected status
+        updateHistoryPs.setString(1, sender);
+        updateHistoryPs.setString(2, Session.currentUsername);
+        updateHistoryPs.executeUpdate();
+
         JOptionPane.showMessageDialog(this,
             "Request from " + sender + " rejected.",
             "Request Rejected", JOptionPane.INFORMATION_MESSAGE);
@@ -1083,6 +1289,7 @@ private void rejectFriendRequest(String sender) {
             "Error", JOptionPane.ERROR_MESSAGE);
     }
 }
+
 
 private void showAddTransactionDialog(boolean isBorrow) {
     JDialog dialog = new JDialog(this, isBorrow ? "Borrowed Money" : "Lend Money", true);

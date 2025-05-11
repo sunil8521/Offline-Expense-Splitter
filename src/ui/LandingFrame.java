@@ -1,5 +1,4 @@
 package ui;
-
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
@@ -9,10 +8,14 @@ public class LandingFrame extends JFrame {
     private final JButton getStartedButton;
 
     public LandingFrame() {
-        super("SpendWise");  // App name displayed on window title
+        super("SpendWise");
+        // App name displayed on window title
+
+
         setSize(900, 600);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
+
 
         // Main container with padding
         JPanel content = new JPanel(new GridBagLayout());
@@ -20,6 +23,7 @@ public class LandingFrame extends JFrame {
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(20, 20, 20, 20);
         gbc.fill = GridBagConstraints.CENTER;
+
 
         // App title
         JLabel titleLabel = new JLabel("SpendWise", SwingConstants.CENTER);
@@ -29,6 +33,7 @@ public class LandingFrame extends JFrame {
         gbc.gridy = 0;
         gbc.gridwidth = 1;
         content.add(titleLabel, gbc);
+
 
         // Get Started button
         getStartedButton = new JButton("Get Started");
